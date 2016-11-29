@@ -24,20 +24,58 @@ namespace ContosoBank
             if (activity.Type == ActivityTypes.Message)
             {
                 ConnectorClient connector = new ConnectorClient(new Uri(activity.ServiceUrl));
+                string selectedCurr = "none";
+                string finalOutput = "Hello! Welcome to the Contoso Bank Bot v1";
+                StateClient stateClient = activity.GetStateClient();
+                BotData userData = await stateClient.BotState.GetUserDataAsync(activity.ChannelId, activity.From.Id);
+
                 CurrencyObject.RootObject rootObject;
                 HttpClient client = new HttpClient();
-                string currencyurl = await client.GetStringAsync(new Uri("http://api.fixer.io/latest?base=NZD"));
-                rootObject = JsonConvert.DeserializeObject<CurrencyObject.RootObject>(currencyurl);
-
-                string baseCurrency = rootObject.@base;
-                double gbp = rootObject.rates.GBP;
-                double aud = rootObject.rates.AUD;
-                double eur = rootObject.rates.EUR;
-                double usd = rootObject.rates.USD;
+                if (activity.Text.ToLower().Contains("currency"))
+                {
+                    if (activity.Text.ToLower().Contains("gbp"))
+                    {
+                        selectedCurr = "gbp";
+                    }
+                    else if (activity.Text.ToLower().Contains("nzd"))
+                    {
+                        selectedCurr = "nzd";
+                    }
+                    else if (activity.Text.ToLower().Contains("usd"))
+                    {
+                        selectedCurr = "usd";
+                    }
+                    else if (activity.Text.ToLower().Contains("eur"))
+                    {
+                        selectedCurr = "eur";
+                    }
+                    else if (activity.Text.ToLower().Contains("aud"))
+                    {
+                        selectedCurr = "aud";
+                    }
+                    if (selectedCurr != "none")
+                    {
+                        string currencyurl = await client.GetStringAsync(new Uri("http://api.fixer.io/latest?base=" + selectedCurr));
+                        rootObject = JsonConvert.DeserializeObject<CurrencyObject.RootObject>(currencyurl);
+                        string baseCurrency = rootObject.@base;
+                        double gbp = rootObject.rates.GBP;
+                        double aud = rootObject.rates.AUD;
+                        double eur = rootObject.rates.EUR;
+                        double usd = rootObject.rates.USD;
+                        finalOutput = "Current rate for " + baseCurrency + " to GBP: " + gbp + ", AUD: " + aud + ", EURO: " + eur + ", USD: " + usd;
+                        activity.CreateReply("One moment...");
+                    }
+                    else
+                    {
+                        finalOutput = "Sorry, can you please be more specific? (GBP, AUD, USD, EURO, NZD)";
+                    }
+                }
 
                 // return our reply to the user
-                Activity reply = activity.CreateReply($"Current rate for {baseCurrency} to GBP: {gbp}, AUD: {aud}, EURO: {eur}, USD: {usd}");
+                Activity reply = activity.CreateReply(finalOutput);
                 await connector.Conversations.ReplyToActivityAsync(reply);
+
+
             }
             else
             {
