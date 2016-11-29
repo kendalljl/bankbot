@@ -33,7 +33,7 @@ namespace ContosoBank
                 BotData userData = await stateClient.BotState.GetUserDataAsync(activity.ChannelId, activity.From.Id);
                 if (userData.GetProperty<bool>("GreetingSent"))
                 {
-                    finalOutput = "I didn't understand that one sorry!";
+                    finalOutput = "I didn't understand that one sorry! Try ask me about currency or bank information";
                 }
                 else
                 {
@@ -79,8 +79,8 @@ namespace ContosoBank
                             double usd = rootObject.rates.USD;
                             finalOutput = "Current rate for " + baseCurrency + " to GBP: " + gbp + ", AUD: " + aud + ", EURO: " + eur + ", USD: " + usd;
                             Activity replyToConversation = activity.CreateReply("One moment...");
-                            await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
                             askedCurrency = true;
+                            await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
                         }
                         else
                         {
@@ -99,17 +99,10 @@ namespace ContosoBank
                     await stateClient.BotState.DeleteStateForUserAsync(activity.ChannelId, activity.From.Id);
                 }
 
-
-
-                // return our reply to the user
-                Activity reply = activity.CreateReply(finalOutput);
-                await connector.Conversations.ReplyToActivityAsync(reply);
-
                 //display bank info item card 
-                if (userInput.Contains("info"))
+                if (userInput.Contains("website") || userInput.Contains("site"))
                 {
-                    finalOutput = "Contoso Bank Information";
-                    Activity replyToConversation = activity.CreateReply();
+                    Activity replyToConversation = activity.CreateReply("Contoso Bank Website");
                     replyToConversation.Recipient = activity.From;
                     replyToConversation.Type = "message";
                     replyToConversation.Attachments = new List<Attachment>();
@@ -125,8 +118,7 @@ namespace ContosoBank
                     cardButtons.Add(plButton);
                     ThumbnailCard plCard = new ThumbnailCard()
                     {
-                        Title = "Visit our website!",
-                        //Subtitle = "(Actually my github)",
+                        Title = "Visit our website today!",
                         Images = cardImages,
                         Buttons = cardButtons
                     };
@@ -138,42 +130,49 @@ namespace ContosoBank
 
                 }
 
-            }
-            else
+                if (userInput.Contains("phone") || userInput.Contains("talk") || userInput.Contains("call") || userInput.Contains("contact"))
+                {
+                    Activity replyToConversation = activity.CreateReply("Contact Contoso Bank");
+                    replyToConversation.Recipient = activity.From;
+                    replyToConversation.Type = "message";
+                    replyToConversation.Attachments = new List<Attachment>();
+                    List<CardImage> cardImages = new List<CardImage>();
+                    cardImages.Add(new CardImage(url: "http://bit.ly/2gRFx1i"));
+                    List<CardAction> cardButtons = new List<CardAction>();
+                    CardAction plButton = new CardAction()
+                    {
+                        Value = "http://bit.ly/2gspZ0m",
+                        Type = "openUrl",
+                        Title = "Google Maps Location"
+                    };
+                    cardButtons.Add(plButton);
+                    ThumbnailCard plCard = new ThumbnailCard()
+                    {
+                        Title = "Call us today!",
+                        Subtitle = "+64272311989",
+                        Images = cardImages,
+                        Buttons = cardButtons
+                    };
+                    Attachment plAttachment = plCard.ToAttachment();
+                    replyToConversation.Attachments.Add(plAttachment);
+                    await connector.Conversations.SendToConversationAsync(replyToConversation);
+
+                    return Request.CreateResponse(HttpStatusCode.OK);
+                }
+
+                    // return our reply to the user
+                Activity reply = activity.CreateReply(finalOutput);
+                await connector.Conversations.ReplyToActivityAsync(reply);
+
+            } else
             {
-                HandleSystemMessage(activity);
+                ConnectorClient connector = new ConnectorClient(new Uri(activity.ServiceUrl));
+                Activity reply = activity.CreateReply("Bot is currently online");
+                await connector.Conversations.ReplyToActivityAsync(reply);
             }
             var response = Request.CreateResponse(HttpStatusCode.OK);
             return response;
         }
 
-        private Activity HandleSystemMessage(Activity message)
-        {
-            if (message.Type == ActivityTypes.DeleteUserData)
-            {
-                // Implement user deletion here
-                // If we handle user deletion, return a real message
-            }
-            else if (message.Type == ActivityTypes.ConversationUpdate)
-            {
-                // Handle conversation state changes, like members being added and removed
-                // Use Activity.MembersAdded and Activity.MembersRemoved and Activity.Action for info
-                // Not available in all channels
-            }
-            else if (message.Type == ActivityTypes.ContactRelationUpdate)
-            {
-                // Handle add/remove from contact lists
-                // Activity.From + Activity.Action represent what happened
-            }
-            else if (message.Type == ActivityTypes.Typing)
-            {
-                // Handle knowing tha the user is typing
-            }
-            else if (message.Type == ActivityTypes.Ping)
-            {
-            }
-
-            return null;
-        }
     }
 }
