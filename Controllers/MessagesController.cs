@@ -1,14 +1,14 @@
 ﻿using System;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Web.Http;
-using System.Web.Http.Description;
 using Microsoft.Bot.Connector;
 using Newtonsoft.Json;
 using ContosoBank.Models;
 using System.Collections.Generic;
+using Microsoft.ProjectOxford.Vision.Contract;
+using Microsoft.ProjectOxford.Vision;
 
 namespace ContosoBank
 {
@@ -19,7 +19,6 @@ namespace ContosoBank
         /// POST: api/Messages
         /// Receive a message from a user and reply to it
         /// </summary>
-        
         public async Task<HttpResponseMessage> Post([FromBody]Activity activity)
         {
             if (activity.Type == ActivityTypes.Message)
@@ -31,21 +30,22 @@ namespace ContosoBank
 
                 StateClient stateClient = activity.GetStateClient();
                 BotData userData = await stateClient.BotState.GetUserDataAsync(activity.ChannelId, activity.From.Id);
-                if (userData.GetProperty<bool>("GreetingSent"))
+
+                if (userData.GetProperty<bool>("Greeting"))
                 {
                     finalOutput = "I didn't understand that one sorry! Try ask me about currency or bank information";
                 }
                 else
                 {
-                    userData.SetProperty<bool>("GreetingSent", true);
+                    userData.SetProperty("Greeting", true);
                     await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
                 }
+
                 CurrencyObject.RootObject rootObject;
                 HttpClient client = new HttpClient();
                 //if the user wants to look at currency rates
                 if (userInput.Contains("currency"))
                 {
-                    bool askedCurrency = false;
                     if (userInput.Contains("gbp"))
                     {
                         selectedCurr = "gbp";
@@ -68,7 +68,7 @@ namespace ContosoBank
                     }
                     if (selectedCurr != "none")
                     {
-                        if (askedCurrency == false)
+                        if (!userData.GetProperty<bool>("SentCurrency"))
                         {
                             string currencyurl = await client.GetStringAsync(new Uri("http://api.fixer.io/latest?base=" + selectedCurr));
                             rootObject = JsonConvert.DeserializeObject<CurrencyObject.RootObject>(currencyurl);
@@ -77,14 +77,16 @@ namespace ContosoBank
                             double aud = rootObject.rates.AUD;
                             double eur = rootObject.rates.EUR;
                             double usd = rootObject.rates.USD;
+                            connector.Conversations.ReplyToActivity(activity.CreateReply($"One moment..."));
                             finalOutput = "Current rate for " + baseCurrency + " to GBP: " + gbp + ", AUD: " + aud + ", EURO: " + eur + ", USD: " + usd;
-                            Activity replyToConversation = activity.CreateReply("One moment...");
-                            askedCurrency = true;
+                            userData.SetProperty("SentCurrency", true);
                             await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
                         }
                         else
                         {
                             finalOutput = "You've already asked for currency rates, ask again if you are sure";
+                            userData.SetProperty("SentCurrency", false);
+                            await stateClient.BotState.SetUserDataAsync(activity.ChannelId, activity.From.Id, userData);
                         }
                     }
                     else
@@ -99,7 +101,7 @@ namespace ContosoBank
                     await stateClient.BotState.DeleteStateForUserAsync(activity.ChannelId, activity.From.Id);
                 }
 
-                //display bank info item card 
+                //display bank website info as card 
                 if (userInput.Contains("website") || userInput.Contains("site"))
                 {
                     Activity replyToConversation = activity.CreateReply("Contoso Bank Website");
@@ -125,12 +127,11 @@ namespace ContosoBank
                     Attachment plAttachment = plCard.ToAttachment();
                     replyToConversation.Attachments.Add(plAttachment);
                     await connector.Conversations.SendToConversationAsync(replyToConversation);
-
                     return Request.CreateResponse(HttpStatusCode.OK);
-
                 }
 
-                if (userInput.Contains("phone") || userInput.Contains("talk") || userInput.Contains("call") || userInput.Contains("contact"))
+                //display phone / address details via card
+                if (userInput.Contains("phone") || userInput.Contains("talk") || userInput.Contains("account") || userInput.Contains("contact"))
                 {
                     Activity replyToConversation = activity.CreateReply("Contact Contoso Bank");
                     replyToConversation.Recipient = activity.From;
@@ -156,23 +157,57 @@ namespace ContosoBank
                     Attachment plAttachment = plCard.ToAttachment();
                     replyToConversation.Attachments.Add(plAttachment);
                     await connector.Conversations.SendToConversationAsync(replyToConversation);
-
                     return Request.CreateResponse(HttpStatusCode.OK);
                 }
 
-                    // return our reply to the user
+                //vision cognitive service on any picture (only way to have text length of 0)
+                if (activity.Text.Length == 0)
+                {
+                    connector.Conversations.ReplyToActivity(activity.CreateReply($"I'm just trying to make out what that is..."));
+                    VisionServiceClient VisionServiceClient = new VisionServiceClient("8db0a8d09ba64ea1a1dd316268503f97");
+                    AnalysisResult analysisResult = await VisionServiceClient.DescribeAsync(activity.Attachments[0].ContentUrl, 3);
+                    finalOutput = $"{analysisResult.Description.Captions[0].Text}";
+                }
+
+                // return our reply to the user
                 Activity reply = activity.CreateReply(finalOutput);
                 await connector.Conversations.ReplyToActivityAsync(reply);
 
             } else
             {
-                ConnectorClient connector = new ConnectorClient(new Uri(activity.ServiceUrl));
-                Activity reply = activity.CreateReply("Bot is currently online");
-                await connector.Conversations.ReplyToActivityAsync(reply);
+                HandleSystemMessage(activity);
             }
             var response = Request.CreateResponse(HttpStatusCode.OK);
             return response;
         }
 
+        private Activity HandleSystemMessage(Activity message)
+        {
+            if (message.Type == ActivityTypes.DeleteUserData)
+            {
+                // Implement user deletion here
+                // If we handle user deletion, return a real message
+            }
+            else if (message.Type == ActivityTypes.ConversationUpdate)
+            {
+                // Handle conversation state changes, like members being added and removed
+                // Use Activity.MembersAdded and Activity.MembersRemoved and Activity.Action for info
+                // Not available in all channels
+            }
+            else if (message.Type == ActivityTypes.ContactRelationUpdate)
+            {
+                // Handle add/remove from contact lists
+                // Activity.From + Activity.Action represent what happened
+            }
+            else if (message.Type == ActivityTypes.Typing)
+            {
+                // Handle knowing tha the user is typing
+            }
+            else if (message.Type == ActivityTypes.Ping)
+            {
+            }
+
+            return null;
+        }
     }
 }
