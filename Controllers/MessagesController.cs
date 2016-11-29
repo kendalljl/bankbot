@@ -131,7 +131,7 @@ namespace ContosoBank
                 }
 
                 //display phone / address details via card
-                if (userInput.Contains("phone") || userInput.Contains("talk") || userInput.Contains("account") || userInput.Contains("contact"))
+                if (userInput.Contains("phone") || userInput.Contains("talk") || userInput.Contains("account") || userInput.Contains("contact") || userInput.Contains("call"))
                 {
                     Activity replyToConversation = activity.CreateReply("Contact Contoso Bank");
                     replyToConversation.Recipient = activity.From;
